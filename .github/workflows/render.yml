@@ -1,0 +1,63 @@
+name: Render video
+
+on:
+  workflow_dispatch:
+    inputs:
+      data:
+        description: "JSON con gancho, guion, jugadores y estadio"
+        required: true
+      audio_url:
+        description: "URL publica del audio (mp3)"
+        required: true
+      callback_url:
+        description: "Webhook de Make al que avisar al terminar"
+        required: false
+      etiqueta:
+        description: "Etiqueta del video"
+        required: false
+        default: "DEBATE DEL DÍA"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar entorno
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg jq
+          pip install -r video/requirements.txt
+
+      - name: Guardar datos
+        env:
+          DATA: ${{ inputs.data }}
+          ETIQUETA: ${{ inputs.etiqueta }}
+        run: |
+          mkdir -p work
+          echo "$DATA" | jq --arg e "$ETIQUETA" '. + {etiqueta: $e}' > work/data.json
+          cat work/data.json
+
+      - name: Renderizar
+        run: |
+          python video/run.py --data work/data.json --audio-url "${{ inputs.audio_url }}" --workdir work
+
+      - name: Publicar video
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="video-${{ github.run_id }}"
+          gh release create "$TAG" work/salida.mp4 --title "$TAG" --notes "Video generado automaticamente"
+          echo "url=https://github.com/${{ github.repository }}/releases/download/$TAG/salida.mp4" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar a Make
+        if: ${{ inputs.callback_url != '' }}
+        run: |
+          jq -n --arg url "${{ steps.rel.outputs.url }}" --slurpfile info work/info.json --slurpfile d work/data.json \
+            '{video_url: $url, credits: $info[0].credits, titulo: ($d[0].titulo // ""), gancho: $d[0].gancho}' \
+            | curl -sS -X POST -H "Content-Type: application/json" --data @- "${{ inputs.callback_url }}"
