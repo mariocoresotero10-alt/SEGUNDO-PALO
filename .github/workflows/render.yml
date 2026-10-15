@@ -3,8 +3,19 @@ name: Render video
 on:
   workflow_dispatch:
     inputs:
-      data:
-        description: "JSON con gancho, guion, jugadores y estadio"
+      titulo:
+        required: true
+      gancho:
+        required: true
+      guion:
+        required: true
+      estadio:
+        required: true
+      jug1:
+        required: true
+      jug2:
+        required: true
+      jug3:
         required: true
       audio_url:
         description: "URL publica del audio (mp3)"
@@ -35,11 +46,19 @@ jobs:
 
       - name: Guardar datos
         env:
-          DATA: ${{ inputs.data }}
+          TITULO: ${{ inputs.titulo }}
+          GANCHO: ${{ inputs.gancho }}
+          GUION: ${{ inputs.guion }}
+          ESTADIO: ${{ inputs.estadio }}
+          J1: ${{ inputs.jug1 }}
+          J2: ${{ inputs.jug2 }}
+          J3: ${{ inputs.jug3 }}
           ETIQUETA: ${{ inputs.etiqueta }}
         run: |
           mkdir -p work
-          echo "$DATA" | jq --arg e "$ETIQUETA" '. + {etiqueta: $e}' > work/data.json
+          jq -n --arg t "$TITULO" --arg g "$GANCHO" --arg s "$GUION" --arg e "$ESTADIO" \
+            --arg j1 "$J1" --arg j2 "$J2" --arg j3 "$J3" --arg et "$ETIQUETA" \
+            '{titulo:$t,gancho:$g,guion:$s,estadio:$e,jugadores:[$j1,$j2,$j3],etiqueta:$et}' > work/data.json
           cat work/data.json
 
       - name: Renderizar
