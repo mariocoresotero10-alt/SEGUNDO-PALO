@@ -83,6 +83,59 @@ def word_timings(text, dur):
     return out
 
 
+def detect_pauses(path):
+    try:
+        r = subprocess.run(["ffmpeg", "-i", path, "-af", "silencedetect=noise=-30dB:d=0.12", "-f", "null", "-"],
+                           capture_output=True, text=True).stderr
+    except Exception:
+        return []
+    st = [float(x) for x in re.findall(r"silence_start: ([\d.]+)", r)]
+    en = [float(x) for x in re.findall(r"silence_end: ([\d.]+)", r)]
+    return list(zip(st, en))
+
+
+def align_timings(words, pauses, dur):
+    """Ajusta los tiempos estimados anclando los signos de puntuacion a las pausas reales de la voz."""
+    punct = [i for i, w in enumerate(words) if w["w"].endswith((",", ";", ":", ".", "?", "!", "…")) and i < len(words) - 1]
+    used = -1
+    anchors = []
+    for i in punct:
+        est = words[i]["e"]
+        best = None
+        for k in range(used + 1, len(pauses)):
+            ps, pe = pauses[k]
+            if ps < est - 1.6:
+                continue
+            if ps > est + 1.6:
+                break
+            d = abs(ps - est)
+            if best is None or d < best[0]:
+                best = (d, k)
+        if best:
+            used = best[1]
+            anchors.append((i, pauses[used][0], pauses[used][1]))
+    if not anchors:
+        return words
+    out = [dict(w) for w in words]
+    bounds = []
+    cur_i, cur_t = 0, 0.12
+    for idx, ps, pe in anchors:
+        bounds.append((cur_i, idx, cur_t, ps))
+        cur_i, cur_t = idx + 1, pe
+    bounds.append((cur_i, len(words) - 1, cur_t, max(cur_t + 0.5, dur - 0.25)))
+    for a, b, t0, t1 in bounds:
+        if b < a or t1 <= t0:
+            continue
+        ws = [max(1, len(re.sub(r"\W", "", words[j]["w"]))) + 1.5 for j in range(a, b + 1)]
+        tot = sum(ws)
+        t = t0
+        for j, wt in zip(range(a, b + 1), ws):
+            d = (t1 - t0) * wt / tot
+            out[j]["s"], out[j]["e"] = t, t + d
+            t += d
+    return out
+
+
 def norm(s):
     return re.sub(r"[^a-z0-9]", "", s.lower().replace("á", "a").replace("é", "e").replace("í", "i")
                   .replace("ó", "o").replace("ú", "u").replace("ñ", "n").replace("ü", "u"))
@@ -219,7 +272,7 @@ def load_img(path, ctx):
     im = Image.open(path).convert("RGB")
     W, H = ctx.W, ctx.H
     cover = max(W / im.width, H / im.height)
-    if cover <= 1.45:
+    if cover <= 1.45 and im.width / im.height < 0.9:
         sc = cover * 1.12  # margen para zoom
         base = im.resize((int(im.width * sc), int(im.height * sc)), Image.LANCZOS)
         mode = "cover"
@@ -536,6 +589,10 @@ class Renderer:
         self.data = data
         self.dur = audio_duration(audio)
         self.words = word_timings(data["guion"], self.dur)
+        try:
+            self.words = align_timings(self.words, detect_pauses(audio), self.dur)
+        except Exception as e:
+            print("alineacion fallida, uso estimacion:", e)
         self.groups = build_caption_groups(self.words)
         self.scenes = build_scenes(data, self.words, self.dur, images_dir, clips_dir)
         self.overlay = make_overlay(self.ctx)
