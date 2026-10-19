@@ -145,22 +145,26 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     """Plano nuevo cada ~2.4 s. Cada jugador usa sus fotos en rotacion; entre medias, clips libres."""
     import glob, random
     jug = [re.sub(r"\s*\(.*?\)", "", j).strip() for j in data.get("jugadores", [])][:3]
-    marks = []
-    for name in jug:
-        keys = [norm(p) for p in name.split() if len(p) > 2][::-1]
-        t = None
-        for wd in words:
-            nw = norm(wd["w"])
-            if any(k and k in nw for k in keys):
-                t = wd["s"]
+    # menciones de cada jugador a lo largo del guion (todas, no solo la primera)
+    keys_of = [[norm(p) for p in name.split() if len(p) > 2] for name in jug]
+    segs = [(0.0, 0)]
+    for wd in words:
+        nw = norm(wd["w"])
+        for i, ks in enumerate(keys_of):
+            if any(k and k in nw for k in ks):
+                if segs[-1][1] != i:
+                    segs.append((max(0.0, wd["s"] - 0.15), i))
                 break
-        marks.append(t)
-    # quien habla en cada momento: el ultimo jugador mencionado (el primero antes de la primera mencion)
+    marks = []
+    for i in range(len(jug)):
+        ts = [st for st, sj in segs if sj == i]
+        marks.append(ts[0] if ts else None)
+
     def subject_at(t):
-        cur = 0
-        for i, m in enumerate(marks):
-            if m is not None and m - 0.2 <= t:
-                cur = i
+        cur = segs[0][1]
+        for st, sj in segs:
+            if st <= t:
+                cur = sj
         return cur
 
     def imgs_of(key):
@@ -181,17 +185,17 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     k = 0
     clip_i = 0
     # fin del tramo de cada sujeto (para repartir sus fotos sin repetirlas)
-    def seg_end(i):
-        nxt = [m for m in marks[i + 1:] if m is not None]
-        return (nxt[0] - 0.2) if nxt else dur
+    def seg_end(t):
+        nxt = [st for st, sj in segs if st > t + 0.05]
+        return nxt[0] if nxt else dur
     while t < dur - 0.05:
-        subj = subject_at(t + 0.2)
+        subj = subject_at(t + 0.1)
         pool = pools.get(subj) or []
         if not pool:
             pool = est if est else []
         n = max(1, len(pool))
-        remaining = max(1.0, seg_end(subj) - t)
-        L = min(max(remaining / n, 3.3), 5.2)
+        remaining = max(1.0, seg_end(t) - t)
+        L = min(max(remaining / n, 2.8), 5.2)
         if dur - t - L < 1.6:
             L = dur - t
         L = min(L, dur - t)
