@@ -296,20 +296,25 @@ def main():
             if len(got) < 2:
                 got = commons_images(name, need=7, minw=1000, minh=700, extra=("Paris Saint-Germain", "Barcelona", "2025", "Spain", "France"))
             n = 0
+            from PIL import Image as _I
+            cand = []
             for pth in own_photos(name):
                 try:
-                    from PIL import Image as _I
                     im0 = _I.open(pth).convert('RGB')
                     if im0.width < 450:
                         print('  foto propia demasiado pequena, se descarta:', os.path.basename(pth), im0.size)
                         continue
-                    im0.save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
-                    n += 1
+                    cand.append((im0.width * im0.height, pth, im0))
                 except Exception as e:  # noqa
                     print('  foto propia ilegible:', pth, e)
+            cand.sort(key=lambda c: -c[0])
+            for _, pth, im0 in cand[:5]:  # solo las mejores (mas resolucion)
+                im0.save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
+                n += 1
+                print('  foto propia usada:', os.path.basename(pth), im0.size)
             if n:
                 print('  fotos propias:', n)
-            for url, cr in got:
+            for url, cr in got[: max(0, 7 - n)]:
                 b = http_get(url, binary=True)
                 if b and len(b) > 20000:
                     n += 1
