@@ -228,10 +228,10 @@ def load_img(path, ctx):
         bx, by = (bg.width - W) // 2, (bg.height - H) // 2
         bg = bg.crop((bx, by, bx + W, by + H)).filter(ImageFilter.GaussianBlur(ctx.s(38)))
         bg = Image.blend(bg, Image.new("RGB", (W, H), (8, 20, 14)), 0.45)
-        fw = W
+        fw = min(W, int(im.width * 1.7))
         fh = int(im.height * fw / im.width)
-        fg = im.resize((fw, fh), Image.LANCZOS)
-        bg.paste(fg, (0, int(H * 0.40 - fh / 2)))
+        fg = im.resize((fw, fh), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=70, threshold=2))
+        bg.paste(fg, ((W - fw) // 2, int(H * 0.40 - fh / 2)))
         base = bg
         mode = "contain"
     _img_cache[key] = (base, mode)

@@ -287,7 +287,7 @@ def main():
                 try:
                     from PIL import Image as _I
                     im0 = _I.open(pth).convert('RGB')
-                    if im0.width < 900:
+                    if im0.width < 450:
                         print('  foto propia demasiado pequena, se descarta:', os.path.basename(pth), im0.size)
                         continue
                     im0.save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
