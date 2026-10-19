@@ -136,6 +136,21 @@ def commons_category_images(name, need=7, minw=1400, minh=1000):
     return [(u, c) for _, u, c in out[:need]]
 
 
+def slug(name):
+    import unicodedata
+    s = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", "-", s).strip("-")
+
+
+def own_photos(name):
+    """Fotos propias subidas al repo en fotos/<nombre-del-jugador>/ (tienen prioridad sobre Wikimedia)."""
+    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fotos", slug(name))
+    if not os.path.isdir(d):
+        return []
+    fs = sorted(f for f in os.listdir(d) if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
+    return [os.path.join(d, f) for f in fs]
+
+
 def api_commons(params):
     q = urllib.parse.urlencode(params)
     raw = http_get(f"https://commons.wikimedia.org/w/api.php?{q}")
@@ -268,6 +283,15 @@ def main():
             if len(got) < 2:
                 got = commons_images(name, need=7, minw=1000, minh=700, extra=("Paris Saint-Germain", "Barcelona", "2025", "Spain", "France"))
             n = 0
+            for pth in own_photos(name):
+                try:
+                    from PIL import Image as _I
+                    _I.open(pth).convert('RGB').save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
+                    n += 1
+                except Exception as e:  # noqa
+                    print('  foto propia ilegible:', pth, e)
+            if n:
+                print('  fotos propias:', n)
             for url, cr in got:
                 b = http_get(url, binary=True)
                 if b and len(b) > 20000:
