@@ -221,9 +221,9 @@ def main():
         subjects = [(f"p{i+1}", j) for i, j in enumerate(data.get("jugadores", [])[:3])]
         for key, title in subjects:
             name = re.sub(r"\s*\(.*?\)", "", title).strip()
-            got = commons_images(name, need=4)
+            got = commons_images(name, need=7)
             if len(got) < 2:
-                got += commons_images(name, need=4, minw=900, minh=700)[: 4 - len(got)]
+                got += commons_images(name, need=7, minw=900, minh=700)[: 7 - len(got)]
             n = 0
             for url, cr in got:
                 b = http_get(url, binary=True)
@@ -250,7 +250,7 @@ def main():
             if f.lower().endswith((".mp4", ".mov", ".webm")):
                 shutil.copy(os.path.join(repo_clips, f), clips_dir)
     pk = os.environ.get("PIXABAY_KEY", "")
-    if pk and not os.listdir(clips_dir) and not a.skip_fetch:
+    if pk and os.environ.get("USAR_STOCK") == "1" and not os.listdir(clips_dir) and not a.skip_fetch:
         if pixabay_clips(clips_dir, pk):
             credits.append("Clips de video: Pixabay (Pixabay Content License)")
             contact_sheet(clips_dir, os.path.join(wd, "clips.jpg"))
