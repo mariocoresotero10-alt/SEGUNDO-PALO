@@ -314,6 +314,8 @@ def main():
                 print('  foto propia usada:', os.path.basename(pth), im0.size)
             if n:
                 print('  fotos propias:', n)
+            if n >= 3:
+                got = []  # con 3+ fotos propias no se mezcla nada de Wikimedia
             for url, cr in got[: max(0, 7 - n)]:
                 b = http_get(url, binary=True)
                 if b and len(b) > 20000:
