@@ -136,6 +136,80 @@ def align_timings(words, pauses, dur):
     return out
 
 
+def whisper_words(path):
+    """Palabras reconocidas con su tiempo real (faster-whisper). Devuelve [] si no esta disponible."""
+    try:
+        from faster_whisper import WhisperModel
+    except Exception as e:
+        print("whisper no disponible:", e)
+        return []
+    try:
+        model = WhisperModel("small", device="cpu", compute_type="int8")
+        segs, _ = model.transcribe(path, language="es", word_timestamps=True, vad_filter=False,
+                                   condition_on_previous_text=False)
+        out = []
+        for sg in segs:
+            for w in (sg.words or []):
+                out.append((w.word.strip(), float(w.start), float(w.end)))
+        print("whisper: palabras reconocidas:", len(out))
+        return out
+    except Exception as e:
+        print("whisper fallo:", e)
+        return []
+
+
+def whisper_align(words, heard, dur):
+    """Pone a cada palabra del guion el tiempo real de la voz; las no reconocidas se interpolan."""
+    import difflib
+    if not heard:
+        return None
+    a = [norm(w["w"]) for w in words]
+    b = [norm(h[0]) for h in heard]
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    t_s = [None] * len(words)
+    t_e = [None] * len(words)
+    hit = 0
+    for blk in sm.get_matching_blocks():
+        for k in range(blk.size):
+            i, j = blk.a + k, blk.b + k
+            if a[i]:
+                t_s[i], t_e[i] = heard[j][1], heard[j][2]
+                hit += 1
+    print("alineacion whisper: %d/%d palabras" % (hit, len(words)))
+    if hit < len(words) * 0.5:
+        return None
+    # interpolar huecos
+    n = len(words)
+    known = [i for i in range(n) if t_s[i] is not None]
+    out = [dict(w) for w in words]
+    for i in known:
+        out[i]["s"], out[i]["e"] = t_s[i], t_e[i]
+    prev_end, prev_i = 0.12, -1
+    for idx, i in enumerate(known + [n]):
+        nxt_start = t_s[i] if i < n else max(prev_end + 0.3, dur - 0.25)
+        gap = list(range(prev_i + 1, i))
+        if gap:
+            ws = [max(1, len(re.sub(r"\W", "", words[g]["w"]))) + 1.0 for g in gap]
+            tot = sum(ws)
+            span = max(0.05 * len(gap), nxt_start - prev_end)
+            t = prev_end
+            for g, wt in zip(gap, ws):
+                d = span * wt / tot
+                out[g]["s"], out[g]["e"] = t, t + d
+                t += d
+        if i < n:
+            prev_end, prev_i = t_e[i], i
+    # asegurar orden creciente
+    last = 0.0
+    for w in out:
+        if w["s"] < last:
+            w["s"] = last
+        if w["e"] < w["s"] + 0.04:
+            w["e"] = w["s"] + 0.04
+        last = w["s"]
+    return out
+
+
 def norm(s):
     return re.sub(r"[^a-z0-9]", "", s.lower().replace("á", "a").replace("é", "e").replace("í", "i")
                   .replace("ó", "o").replace("ú", "u").replace("ñ", "n").replace("ü", "u"))
@@ -593,10 +667,18 @@ class Renderer:
         self.data = data
         self.dur = audio_duration(audio)
         self.words = word_timings(data["guion"], self.dur)
+        wa = None
         try:
-            self.words = align_timings(self.words, detect_pauses(audio), self.dur)
+            wa = whisper_align(self.words, whisper_words(audio), self.dur)
         except Exception as e:
-            print("alineacion fallida, uso estimacion:", e)
+            print("alineacion whisper fallida:", e)
+        if wa:
+            self.words = wa
+        else:
+            try:
+                self.words = align_timings(self.words, detect_pauses(audio), self.dur)
+            except Exception as e:
+                print("alineacion fallida, uso estimacion:", e)
         self.groups = build_caption_groups(self.words)
         self.scenes = build_scenes(data, self.words, self.dur, images_dir, clips_dir)
         self.overlay = make_overlay(self.ctx)
