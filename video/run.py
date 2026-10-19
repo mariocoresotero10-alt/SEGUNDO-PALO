@@ -143,11 +143,24 @@ def slug(name):
 
 
 def own_photos(name):
-    """Fotos propias subidas al repo en fotos/<nombre-del-jugador>/ (tienen prioridad sobre Wikimedia)."""
-    d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fotos", slug(name))
-    if not os.path.isdir(d):
+    """Fotos propias subidas al repo en fotos/<nombre-del-jugador>/ (tienen prioridad sobre Wikimedia).
+    Casa la carpeta aunque el nombre venga incompleto (p. ej. 'Dembele' o 'Lamine')."""
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fotos")
+    if not os.path.isdir(base):
+        return []
+    want = set(t for t in slug(name).split("-") if len(t) > 3)
+    d = None
+    for folder in sorted(os.listdir(base)):
+        if not os.path.isdir(os.path.join(base, folder)):
+            continue
+        if folder == slug(name) or want & set(t for t in folder.split("-") if len(t) > 3):
+            d = os.path.join(base, folder)
+            break
+    if not d:
+        print("  sin carpeta de fotos propias para:", name)
         return []
     fs = sorted(f for f in os.listdir(d) if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
+    print("  carpeta propia:", os.path.basename(d), len(fs), "fotos")
     return [os.path.join(d, f) for f in fs]
 
 
