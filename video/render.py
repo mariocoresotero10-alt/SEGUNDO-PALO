@@ -522,7 +522,7 @@ def render_hook(ctx, text, t):
     stroke = ctx.s(8)
     lines = wrap_lines(d, text.upper(), font, ctx.s(900), stroke)
     lh = ctx.s(124)
-    y0 = ctx.H * 0.40 - (len(lines) - 1) * lh / 2
+    y0 = ctx.H * 0.70 - (len(lines) - 1) * lh / 2
     for i, ln in enumerate(lines):
         draw_text_c(layer, ctx.W / 2, y0 + i * lh, ln, font, WHITE if i % 2 == 0 else YELLOW, stroke)
     pop = 0.55 + 0.45 * ease_back((t - t0) / 0.38)
@@ -620,7 +620,8 @@ class Renderer:
         im.alpha_composite(self.overlay)
         im.alpha_composite(self.header)
         im.alpha_composite(render_progress(ctx, t / self.dur), (0, 0))
-        nt = render_nametag(ctx, sc["label"], t - sc["s"]) if (sc["label"] and sc["first"]) else None
+        nt_t = t - max(sc["s"], 2.7 if self.data.get("gancho") else 0.0)
+        nt = render_nametag(ctx, sc["label"], nt_t) if (sc["label"] and sc["first"] and nt_t >= 0) else None
         if nt is not None:
             im.alpha_composite(nt)
         hk = render_hook(ctx, self.data.get("gancho", ""), t)
