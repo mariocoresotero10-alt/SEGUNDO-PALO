@@ -62,6 +62,8 @@ jobs:
           cat work/data.json
 
       - name: Renderizar
+        env:
+          PIXABAY_KEY: ${{ secrets.PIXABAY_KEY }}
         run: |
           python video/run.py --data work/data.json --audio-url "${{ inputs.audio_url }}" --workdir work
 
