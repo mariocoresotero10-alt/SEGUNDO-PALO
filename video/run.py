@@ -108,7 +108,7 @@ def api_commons(params):
 GOOD_TAGS = ("soccer", "football", "stadium", "goal", "penalty", "pitch", "ball")
 BAD_TAGS = ("american", "rugby", "kid", "child", "children", "cartoon", "illustration", "animation", "drawing",
             "logo", "toy", "game", "video game", "gamer", "baby", "girl", "woman", "flag", "ads", "advert",
-            "text", "abstract", "3d", "render", "table", "foosball", "fussball", "basketball", "baseball", "tennis")
+            "text", "abstract", "3d", "render", "green screen", "greenscreen", "green", "chroma", "isolated", "alpha", "transparent", "4k ball", "table", "foosball", "fussball", "basketball", "baseball", "tennis")
 
 
 def blocked_ids():

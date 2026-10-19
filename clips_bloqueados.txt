@@ -1,1 +1,5 @@
 # IDs de Pixabay que no se deben usar nunca (uno por linea)
+116323  # balon sobre pantalla verde
+14234  # balones sobre pantalla verde
+32845  # parque con arboles, sin futbol
+40634  # campo lejano, poca calidad
