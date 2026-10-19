@@ -286,7 +286,11 @@ def main():
             for pth in own_photos(name):
                 try:
                     from PIL import Image as _I
-                    _I.open(pth).convert('RGB').save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
+                    im0 = _I.open(pth).convert('RGB')
+                    if im0.width < 900:
+                        print('  foto propia demasiado pequena, se descarta:', os.path.basename(pth), im0.size)
+                        continue
+                    im0.save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
                     n += 1
                 except Exception as e:  # noqa
                     print('  foto propia ilegible:', pth, e)
