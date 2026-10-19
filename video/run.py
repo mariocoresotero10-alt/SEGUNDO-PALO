@@ -100,6 +100,42 @@ def commons_images(query, need=7, minw=1400, minh=1000, extra=()):
     return [(u, c) for _, u, c in out[:need]]
 
 
+def commons_category_images(name, need=7, minw=1400, minh=1000):
+    """Fotos de la categoria de Commons de la persona y de sus subcategorias recientes (club, seleccion)."""
+    cat = "Category:" + name.replace(" ", "_")
+    sub = api_commons({"action": "query", "list": "categorymembers", "cmtitle": cat, "cmtype": "subcat",
+                       "cmlimit": 100, "format": "json", "formatversion": 2})
+    subs = [m["title"] for m in sub.get("query", {}).get("categorymembers", [])]
+    pref = ("paris saint-germain", "psg", "france", "spain", "barcelona", "2025", "2026", "2024", "champions league")
+    cats = [t for t in subs if any(p in t.lower() for p in pref)]
+    cats = sorted(cats, key=lambda t: 0 if ("paris" in t.lower() or "2025" in t or "2026" in t) else 1)[:6]
+    out, seen = [], set()
+    for c in cats + [cat]:
+        d = api_commons({"action": "query", "generator": "categorymembers", "gcmtitle": c, "gcmtype": "file",
+                         "gcmlimit": 60, "prop": "imageinfo", "iiprop": "url|size|mime|extmetadata",
+                         "iiurlwidth": 1600, "format": "json", "formatversion": 2})
+        bonus = 1 if c != cat else 0
+        for pg in d.get("query", {}).get("pages", []):
+            ii = (pg.get("imageinfo") or [{}])[0]
+            title = pg.get("title", "").lower()
+            url = ii.get("thumburl") or ii.get("url")
+            if not url or url in seen or ii.get("mime") != "image/jpeg" or any(b in title for b in BAD):
+                continue
+            w, h = ii.get("width", 0), ii.get("height", 0)
+            if w < minw or h < minh:
+                continue
+            ext = ii.get("extmetadata", {})
+            lic = ext.get("LicenseShortName", {}).get("value", "")
+            if not lic or "fair" in lic.lower() or "nc" in lic.lower().replace("nc-", "nc "):
+                continue
+            artist = strip_html(ext.get("Artist", {}).get("value", "")) or "autor desconocido"
+            seen.add(url)
+            out.append((bonus * 10_000_000 + w * h, url, f"{name}: {artist} / Wikimedia Commons ({lic})"))
+    out.sort(key=lambda x: -x[0])
+    print("  categoria", cat, "->", len(out), "fotos candidatas;", len(cats), "subcategorias")
+    return [(u, c) for _, u, c in out[:need]]
+
+
 def api_commons(params):
     q = urllib.parse.urlencode(params)
     raw = http_get(f"https://commons.wikimedia.org/w/api.php?{q}")
@@ -222,7 +258,13 @@ def main():
         subjects = [(f"p{i+1}", j) for i, j in enumerate(data.get("jugadores", [])[:3])]
         for key, title in subjects:
             name = re.sub(r"\s*\(.*?\)", "", title).strip()
-            got = commons_images(name, need=7, extra=("Paris Saint-Germain", "Barcelona", "2025", "2026", "Spain", "France"))
+            try:
+                got = commons_category_images(name, need=7)
+            except Exception as e:  # noqa
+                print('  categoria fallo:', e)
+                got = []
+            if len(got) < 4:
+                got += [g for g in commons_images(name, need=7, extra=("Paris Saint-Germain", "Barcelona", "2025", "2026", "Spain", "France")) if g not in got][: 7 - len(got)]
             if len(got) < 2:
                 got = commons_images(name, need=7, minw=1000, minh=700, extra=("Paris Saint-Germain", "Barcelona", "2025", "Spain", "France"))
             n = 0
