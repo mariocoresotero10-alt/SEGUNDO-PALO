@@ -586,6 +586,8 @@ def main():
             print(f"{n}/{total}", flush=True)
     p.stdin.close()
     p.wait()
+    for rd in _readers.values():
+        rd.close()
     print("listo", a.out)
 
 
