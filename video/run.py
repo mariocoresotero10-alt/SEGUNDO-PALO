@@ -308,7 +308,7 @@ def main():
                 except Exception as e:  # noqa
                     print('  foto propia ilegible:', pth, e)
             cand.sort(key=lambda c: -c[0])
-            for _, pth, im0 in cand[:5]:  # solo las mejores (mas resolucion)
+            for _, pth, im0 in cand[:7]:  # solo las mejores (mas resolucion)
                 im0.save(os.path.join(imgs, f'{key}_{n+1}.jpg'), quality=95)
                 n += 1
                 print('  foto propia usada:', os.path.basename(pth), im0.size)
