@@ -125,37 +125,48 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     used = {i: 0 for i in pools}
     scenes = []
     t = 0.0
-    end_card = dur - 3.4
     k = 0
     clip_i = 0
-    est_done = False
+    # fin del tramo de cada sujeto (para repartir sus fotos sin repetirlas)
+    def seg_end(i):
+        nxt = [m for m in marks[i + 1:] if m is not None]
+        return (nxt[0] - 0.2) if nxt else dur
     while t < dur - 0.05:
-        L = min(rng.uniform(2.1, 2.9), dur - t)
-        if dur - t - L < 1.2:
-            L = dur - t
         subj = subject_at(t + 0.2)
-        kind = "foto"
-        path, label = None, None
-        # cada 3er plano un clip libre (si hay); un plano de estadio una vez a mitad
-        if clips and k % 3 == 2 and t > 3.0 and t < end_card - 2.0:
+        pool = pools.get(subj) or []
+        if not pool:
+            pool = est if est else []
+        n = max(1, len(pool))
+        remaining = max(1.0, seg_end(subj) - t)
+        L = min(max(remaining / n, 3.3), 5.2)
+        if dur - t - L < 1.6:
+            L = dur - t
+        L = min(L, dur - t)
+        kind, path, label = "foto", None, None
+        if clips and k % 3 == 2 and t > 3.0:
             kind = "clip"
             path = clips[clip_i % len(clips)]
             clip_i += 1
-        elif est and not est_done and t > dur * 0.45 and t < end_card - 2.0:
-            path = est[0]
-            est_done = True
-        else:
-            pool = pools.get(subj) or []
-            if pool:
-                path = pool[used[subj] % len(pool)]
-                used[subj] += 1
-                label = jug[subj]
+        elif pool:
+            path = pool[used.get(subj, 0) % len(pool)]
+            used[subj] = used.get(subj, 0) + 1
+            label = jug[subj] if subj < len(jug) else None
         sc = {"img": path if kind == "foto" else None, "clip": path if kind == "clip" else None,
               "label": label, "s": t, "e": t + L, "first": False, "idx": len(scenes), "subj": subj,
               "kind": kind, "rng": rng.random()}
         scenes.append(sc)
         t += L
         k += 1
+    # fusionar planos consecutivos con la misma foto (un solo plano largo en vez de repetirla)
+    merged = []
+    for sc in scenes:
+        if merged and sc["img"] and merged[-1]["img"] == sc["img"]:
+            merged[-1]["e"] = sc["e"]
+        else:
+            merged.append(sc)
+    for i, sc in enumerate(merged):
+        sc["idx"] = i
+    scenes = merged
     # etiqueta solo en el primer plano de cada jugador
     seen = set()
     for sc in scenes:
@@ -273,6 +284,7 @@ def photo_frame(ctx, sc, t):
     elif z0 < 1.04 and z1 < 1.04:
         z0, z1 = 1.0, 1.12
     z = z0 + (z1 - z0) * ease_io(p)
+    z *= 1.0 + 0.045 * (1 - ease_out((t - sc["s"]) / 0.35))
     ar = ctx.W / ctx.H
     ch = im.height / (z if mode == "cover" else z)
     cw = ch * ar
@@ -300,13 +312,12 @@ def scene_at(scenes, t):
 
 
 def make_overlay(ctx):
-    """Degradado suave: algo arriba (marca) y mas abajo (subtitulos). La foto se ve limpia en medio."""
+    """Velo casi nulo: las fotos se ven luminosas; solo un toque arriba para la marca."""
     h, w = ctx.H, ctx.W
     y = np.linspace(0, 1, h)[:, None]
-    a = 0.10 + 0.40 * np.clip((0.14 - y) / 0.14, 0, 1) + 0.72 * np.clip((y - 0.58) / 0.42, 0, 1) ** 1.3
-    a = np.clip(a, 0, 0.88)
+    a = 0.04 + 0.30 * np.clip((0.12 - y) / 0.12, 0, 1) + 0.10 * np.clip((y - 0.62) / 0.38, 0, 1)
     arr = np.zeros((h, w, 4), dtype=np.uint8)
-    arr[..., 3] = (a * 255).astype(np.uint8)[:, 0:1].repeat(w, axis=1)
+    arr[..., 3] = (np.clip(a, 0, 0.5) * 255).astype(np.uint8)[:, 0:1].repeat(w, axis=1)
     return Image.fromarray(arr, "RGBA")
 
 
@@ -377,8 +388,8 @@ def render_caption(ctx, words, groups, t):
     g = groups[gi]
     d = ImageDraw.Draw(layer)
     font = ctx.font(84)
-    gap = ctx.s(24)
-    maxw = ctx.s(940)
+    gap = ctx.s(34)
+    maxw = ctx.s(930)
     txts = [words[i]["w"].upper().strip(",.;:¡!¿?\"") or words[i]["w"] for i in g]
     # el signo de pregunta se conserva al final de la ultima palabra de la frase
     for n, i in enumerate(g):
@@ -402,18 +413,26 @@ def render_caption(ctx, words, groups, t):
     gp = ease_out((t - (words[g[0]]["s"] - 0.05)) / 0.16)
     shadow = Image.new("RGBA", (ctx.W, ctx.H), (0, 0, 0, 0))
     sd = ImageDraw.Draw(shadow)
+    stroke = ctx.s(8)
     for li, line in enumerate(lines):
         total = sum(x[2] for x in line) + gap * (len(line) - 1)
         x = ctx.W / 2 - total / 2
         cy = y0 + li * lh
         for (i, tx, wpx) in line:
             active = words[i]["s"] <= t < words[i]["e"]
-            w_, h_, b_ = text_size(d, tx, font)
+            w_, h_, b_ = text_size(d, tx, font, stroke)
             pos = (x - b_[0], cy - h_ / 2 - b_[1])
-            sd.text((pos[0] + ctx.s(4), pos[1] + ctx.s(6)), tx, font=font, fill=(0, 0, 0, 200))
-            d.text(pos, tx, font=font, fill=(YELLOW if active else WHITE) + (255,))
+            sd.text((pos[0] + ctx.s(2), pos[1] + ctx.s(7)), tx, font=font, fill=(0, 0, 0, 120),
+                    stroke_width=stroke, stroke_fill=(0, 0, 0, 120))
+            if active:
+                pop = 1.0 + 0.06 * math.sin(clamp((t - words[i]["s"]) / 0.14) * math.pi)
+                d.text(pos, tx, font=font, fill=(0, 0, 0, 255), stroke_width=int(stroke * pop),
+                       stroke_fill=YELLOW + (255,))
+            else:
+                d.text(pos, tx, font=font, fill=(0, 0, 0, 255), stroke_width=stroke,
+                       stroke_fill=(255, 255, 255, 255))
             x += wpx + gap
-    shadow = shadow.filter(ImageFilter.GaussianBlur(ctx.s(6)))
+    shadow = shadow.filter(ImageFilter.GaussianBlur(ctx.s(7)))
     shadow.alpha_composite(layer)
     layer = shadow
     if gp < 1.0:
@@ -472,7 +491,8 @@ def render_nametag(ctx, label, sc_t):
     x = ctx.s(70) - (1 - p) * ctx.s(60)
     y = ctx.H * 0.655
     d.rectangle([x, y - h_ / 2 - ctx.s(4), x + ctx.s(8), y + h_ / 2 + ctx.s(6)], fill=YELLOW + (255,))
-    d.text((x + ctx.s(26) - b_[0], y - h_ / 2 - b_[1]), txt, font=font, fill=WHITE + (255,))
+    d.text((x + ctx.s(26) - b_[0], y - h_ / 2 - b_[1]), txt, font=font, fill=(0, 0, 0, 255),
+           stroke_width=ctx.s(5), stroke_fill=(255, 255, 255, 255))
     al = clamp(p) * clamp(out)
     layer.putalpha(layer.split()[3].point(lambda v: int(v * al)))
     return layer

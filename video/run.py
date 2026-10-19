@@ -70,33 +70,34 @@ BAD = ("logo", "signature", "firma", "map", "flag", "bandera", "escudo", "crest"
        "autograph", "kit", "shirt", "jersey", "svg", "poster", "cartel", "card", "figurine", "wax", "statue")
 
 
-def commons_images(query, need=4, minw=1400, minh=1000):
-    """Varias fotos libres y grandes de Commons para una busqueda. Devuelve [(url, credito)]."""
-    d = api_commons({"action": "query", "generator": "search", "gsrnamespace": 6, "gsrlimit": 30,
-                     "gsrsearch": query + " filetype:bitmap", "prop": "imageinfo",
-                     "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1600, "format": "json",
-                     "formatversion": 2})
-    pages = d.get("query", {}).get("pages", [])
-    pages.sort(key=lambda p: p.get("index", 99))
+def commons_images(query, need=7, minw=1400, minh=1000, extra=()):
+    """Fotos libres y grandes de Commons para una persona, mezclando varias busquedas (club, seleccion...)."""
+    seen, out = set(), []
+    qs = [query] + [f"{query} {e}" for e in extra]
     surname = query.split()[-1].lower()
-    out = []
-    for pg in pages:
-        ii = (pg.get("imageinfo") or [{}])[0]
-        title = pg.get("title", "").lower()
-        if ii.get("mime") != "image/jpeg" or any(b in title for b in BAD):
-            continue
-        w, h = ii.get("width", 0), ii.get("height", 0)
-        if w < minw or h < minh or surname not in title:
-            continue
-        ext = ii.get("extmetadata", {})
-        lic = ext.get("LicenseShortName", {}).get("value", "")
-        if not lic or "fair" in lic.lower() or "nc" in lic.lower().replace("nc-", "nc "):
-            continue
-        artist = strip_html(ext.get("Artist", {}).get("value", "")) or "autor desconocido"
-        out.append((ii.get("thumburl") or ii.get("url"), f"{query}: {artist} / Wikimedia Commons ({lic})"))
-        if len(out) >= need:
-            break
-    return out
+    for q in qs:
+        d = api_commons({"action": "query", "generator": "search", "gsrnamespace": 6, "gsrlimit": 30,
+                         "gsrsearch": q + " filetype:bitmap", "prop": "imageinfo",
+                         "iiprop": "url|size|mime|extmetadata", "iiurlwidth": 1600, "format": "json",
+                         "formatversion": 2})
+        for pg in d.get("query", {}).get("pages", []):
+            ii = (pg.get("imageinfo") or [{}])[0]
+            title = pg.get("title", "").lower()
+            url = ii.get("thumburl") or ii.get("url")
+            if not url or url in seen or ii.get("mime") != "image/jpeg" or any(b in title for b in BAD):
+                continue
+            w, h = ii.get("width", 0), ii.get("height", 0)
+            if w < minw or h < minh or surname not in title:
+                continue
+            ext = ii.get("extmetadata", {})
+            lic = ext.get("LicenseShortName", {}).get("value", "")
+            if not lic or "fair" in lic.lower() or "nc" in lic.lower().replace("nc-", "nc "):
+                continue
+            artist = strip_html(ext.get("Artist", {}).get("value", "")) or "autor desconocido"
+            seen.add(url)
+            out.append((w * h, url, f"{query}: {artist} / Wikimedia Commons ({lic})"))
+    out.sort(key=lambda x: -x[0])
+    return [(u, c) for _, u, c in out[:need]]
 
 
 def api_commons(params):
@@ -221,9 +222,9 @@ def main():
         subjects = [(f"p{i+1}", j) for i, j in enumerate(data.get("jugadores", [])[:3])]
         for key, title in subjects:
             name = re.sub(r"\s*\(.*?\)", "", title).strip()
-            got = commons_images(name, need=7)
+            got = commons_images(name, need=7, extra=("Paris Saint-Germain", "Barcelona", "2025", "2026", "Spain", "France"))
             if len(got) < 2:
-                got += commons_images(name, need=7, minw=900, minh=700)[: 7 - len(got)]
+                got = commons_images(name, need=7, minw=1000, minh=700, extra=("Paris Saint-Germain", "Barcelona", "2025", "Spain", "France"))
             n = 0
             for url, cr in got:
                 b = http_get(url, binary=True)
