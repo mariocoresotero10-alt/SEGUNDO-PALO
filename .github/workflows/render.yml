@@ -73,7 +73,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="video-${{ github.run_id }}"
-          gh release create "$TAG" work/salida.mp4 --title "$TAG" --notes "Video generado automaticamente"
+          gh release create "$TAG" work/salida.mp4 $(ls work/clips.jpg 2>/dev/null) --title "$TAG" --notes "Video generado automaticamente"
           echo "url=https://github.com/${{ github.repository }}/releases/download/$TAG/salida.mp4" >> "$GITHUB_OUTPUT"
 
       - name: Avisar a Make

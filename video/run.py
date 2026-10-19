@@ -105,41 +105,92 @@ def api_commons(params):
     return json.loads(raw) if raw else {}
 
 
+GOOD_TAGS = ("soccer", "football", "stadium", "goal", "penalty", "pitch", "ball")
+BAD_TAGS = ("american", "rugby", "kid", "child", "children", "cartoon", "illustration", "animation", "drawing",
+            "logo", "toy", "game", "video game", "gamer", "baby", "girl", "woman", "flag", "ads", "advert",
+            "text", "abstract", "3d", "render", "table", "foosball", "fussball", "basketball", "baseball", "tennis")
+
+
+def blocked_ids():
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "clips_bloqueados.txt")
+    if not os.path.exists(p):
+        return set()
+    return {l.split("#")[0].strip() for l in open(p) if l.split("#")[0].strip()}
+
+
 def pixabay_clips(dest, key, n=6):
-    """Descarga n clips de futbol libres de derechos de Pixabay. Devuelve cuantos ha bajado."""
+    """Clips de futbol de Pixabay, solo los que pasan filtros estrictos de calidad y tema."""
     import random
     os.makedirs(dest, exist_ok=True)
-    qs = ["soccer", "football stadium", "soccer ball", "soccer goal", "soccer fans", "soccer match", "soccer training"]
-    cands = []
+    bad_ids = blocked_ids()
+    qs = ["soccer match", "soccer stadium", "soccer ball", "soccer goal", "soccer fans", "soccer players", "football pitch"]
+    cands = {}
     for q in qs:
         raw = http_get("https://pixabay.com/api/videos/?" + urllib.parse.urlencode(
-            {"key": key, "q": q, "per_page": 20, "safesearch": "true"}))
+            {"key": key, "q": q, "per_page": 30, "order": "popular", "safesearch": "true"}))
         if not raw:
             continue
         try:
-            for h in json.loads(raw).get("hits", []):
-                v = h.get("videos", {})
-                pick = v.get("medium") or v.get("large") or v.get("small")
-                if pick and pick.get("url") and h.get("duration", 0) >= 4 and pick.get("size", 0) < 40_000_000:
-                    cands.append((h["id"], pick["url"]))
+            hits = json.loads(raw).get("hits", [])
         except Exception as e:  # noqa
             print("  pixabay:", e)
-    seen, uniq = set(), []
-    for i, u in cands:
-        if i not in seen:
-            seen.add(i)
-            uniq.append((i, u))
-    random.shuffle(uniq)
+            continue
+        for h in hits:
+            hid = str(h.get("id"))
+            tags = [t.strip().lower() for t in h.get("tags", "").split(",")]
+            tagtxt = " ".join(tags)
+            v = h.get("videos", {})
+            pick = v.get("large") if (v.get("large") or {}).get("width", 0) >= 1280 else v.get("medium")
+            if not pick or not pick.get("url") or pick.get("width", 0) < 1280:
+                continue
+            if hid in bad_ids or h.get("duration", 0) < 5 or pick.get("size", 0) > 45_000_000:
+                continue
+            if not any(g in tagtxt for g in ("soccer", "football")):
+                continue
+            if any(b in tags or (len(b) > 4 and b in tagtxt) for b in BAD_TAGS):
+                continue
+            if h.get("downloads", 0) < 300 and h.get("likes", 0) < 15:
+                continue
+            cands[hid] = (h.get("downloads", 0) + 20 * h.get("likes", 0), pick["url"])
+    ranked = sorted(cands.items(), key=lambda kv: -kv[1][0])[:25]
+    random.shuffle(ranked)
     got = 0
-    for i, u in uniq:
+    for hid, (_, url) in ranked:
         if got >= n:
             break
-        b = http_get(u, binary=True)
-        if b and len(b) > 100_000:
-            open(os.path.join(dest, f"pix_{i}.mp4"), "wb").write(b)
+        b = http_get(url, binary=True)
+        if b and len(b) > 200_000:
+            open(os.path.join(dest, f"pix_{hid}.mp4"), "wb").write(b)
             got += 1
-    print("  clips:", got)
+    print("  clips:", got, "de", len(cands), "candidatos")
     return got
+
+
+def contact_sheet(clips_dir, out_png):
+    """Una imagen con un fotograma de cada clip, para revisar que son buenos."""
+    from PIL import Image, ImageDraw
+    fr = []
+    for f in sorted(os.listdir(clips_dir)):
+        p = os.path.join(clips_dir, f)
+        t = os.path.join(clips_dir, f + ".jpg")
+        subprocess.call(["ffmpeg", "-v", "error", "-y", "-ss", "2", "-i", p, "-frames:v", "1", "-vf", "scale=480:-1", t])
+        if os.path.exists(t):
+            fr.append((f, Image.open(t)))
+    if not fr:
+        return
+    cols = 3
+    rows = (len(fr) + cols - 1) // cols
+    cw, ch = 480, max(i.height for _, i in fr) + 24
+    sheet = Image.new("RGB", (cols * cw, rows * ch), (20, 20, 20))
+    d = ImageDraw.Draw(sheet)
+    for k, (name, im) in enumerate(fr):
+        x, y = (k % cols) * cw, (k // cols) * ch
+        sheet.paste(im, (x, y + 24))
+        d.text((x + 6, y + 6), name, fill=(255, 255, 255))
+    sheet.save(out_png)
+    for f in os.listdir(clips_dir):
+        if f.endswith(".jpg"):
+            os.remove(os.path.join(clips_dir, f))
 
 
 def main():
@@ -202,6 +253,7 @@ def main():
     if pk and not os.listdir(clips_dir) and not a.skip_fetch:
         if pixabay_clips(clips_dir, pk):
             credits.append("Clips de video: Pixabay (Pixabay Content License)")
+            contact_sheet(clips_dir, os.path.join(wd, "clips.jpg"))
 
     out = os.path.join(wd, "salida.mp4")
     here = os.path.dirname(os.path.abspath(__file__))
