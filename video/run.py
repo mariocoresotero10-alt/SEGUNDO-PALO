@@ -302,7 +302,7 @@ def main():
             for pth in own_photos(name):
                 try:
                     im0 = _I.open(pth).convert('RGB')
-                    if im0.width < 450:
+                    if im0.width < 200:
                         print('  foto propia demasiado pequena, se descarta:', os.path.basename(pth), im0.size)
                         continue
                     cand.append((im0.width * im0.height, pth, im0))

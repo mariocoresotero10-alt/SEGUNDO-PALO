@@ -277,6 +277,8 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))[:1]
     ctx_pool = sorted(glob.glob(os.path.join(images_dir, "ctx_*.jpg")))
     ctx_i = 0
+    shown = set()
+    cnt = {}
     final_done = False
     final_from = dur * 0.66
     while t < dur - 0.05:
@@ -297,19 +299,36 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
             L = dur - t
         L = min(L, dur - t)
         kind, path, label = "foto", None, None
+        def _pick(pl):
+            for q_ in pl:
+                if q_ not in shown:
+                    return q_
+            return None
         if clips and k % 3 == 2 and t > 3.0:
             kind = "clip"
             path = clips[clip_i % len(clips)]
             clip_i += 1
-        elif ctx_pool and not in_final and k % 3 == 2 and t > 3.0:
-            path = ctx_pool[ctx_i % len(ctx_pool)]
+        elif in_final:
+            path = final_pool[0]
+        elif k < 2 and ctx_i < len(ctx_pool):
+            path = ctx_pool[ctx_i]  # primero las fotos de portada / contexto
             ctx_i += 1
-            label = None
-        elif pool:
-            ukey = "final" if in_final else subj
-            path = pool[used.get(ukey, 0) % len(pool)]
-            used[ukey] = used.get(ukey, 0) + 1
-            label = None if (in_final or pool is ctx_pool) else (jug[subj] if subj < len(jug) and pools.get(subj) else None)
+        else:
+            own = pools.get(subj) or []
+            path = _pick(own)
+            if path:
+                label = jug[subj] if subj < len(jug) else None
+            else:
+                path = _pick(ctx_pool) or _pick([x for v in pools.values() for x in v])
+            if not path:  # todo visto: se reutiliza la menos usada, nunca la anterior
+                last_ = scenes[-1]["img"] if scenes else None
+                cands = [x for x in (own + ctx_pool + [y for v in pools.values() for y in v]) if x != last_ and x != (final_pool[0] if final_pool else None)]
+                path = min(cands, key=lambda x: cnt.get(x, 0)) if cands else (own or ctx_pool or [None])[0]
+                if own and path in own:
+                    label = jug[subj] if subj < len(jug) else None
+        if path and kind == "foto":
+            shown.add(path)
+            cnt[path] = cnt.get(path, 0) + 1
         sc = {"img": path if kind == "foto" else None, "clip": path if kind == "clip" else None,
               "label": label, "s": t, "e": t + L, "first": False, "idx": len(scenes), "subj": subj,
               "kind": kind, "rng": rng.random()}
