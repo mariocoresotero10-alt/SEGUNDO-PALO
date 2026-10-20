@@ -297,15 +297,17 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     cnt = {}
     final_done = False
     final_from = dur * 0.66
+    final_kw = False
     KW = ("alineac", "delantera", "once", "plantilla", "equipo", "imparable")
     for wd in words:
         if wd["s"] >= dur * 0.45 and any(norm(wd["w"]).startswith(k_) for k_ in KW):
             final_from = max(0.0, wd["s"] - 0.1)  # la alineacion sale justo cuando se habla de ella
+            final_kw = True
             break
     while t < dur - 0.05:
         subj = subject_at(t + 0.1)
         pool = pools.get(subj) or []
-        in_final = bool(final_pool) and not final_done and t >= final_from
+        in_final = bool(final_pool) and not final_kw and not final_done and t >= final_from
         if in_final:
             pool = final_pool
         if not pool:
@@ -368,9 +370,12 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     scenes = merged
     # fotos de tema: se cortan justo cuando se dice su palabra clave
     fin_rng = [(sc["s"], sc["e"]) for sc in scenes if sc["img"] and "final_" in os.path.basename(sc["img"])]
-    for hit, pth in sorted(topic):
+    todo = sorted(topic)
+    if final_kw and final_pool:
+        todo.append((final_from + 0.1, final_pool[0]))
+    for hit, pth in todo:
         s0 = max(0.0, hit - 0.1)
-        e0 = min(dur, s0 + 3.2)
+        e0 = min(dur, s0 + (5.5 if "final_" in os.path.basename(pth) else 3.2))
         if e0 - s0 < 2.0 or any(a_ < e0 and b_ > s0 for a_, b_ in fin_rng):
             continue
         for sc in scenes:  # ajustar a los limites de plano cercanos para no dejar huecos ni trozos de <0.4 s

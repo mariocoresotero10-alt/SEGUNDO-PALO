@@ -361,7 +361,7 @@ def main():
                 for f in sorted(os.listdir(cdir)):
                     if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
                         im3 = _I3.open(os.path.join(cdir, f)).convert("RGB")
-                        if im3.width >= 450:
+                        if im3.width >= 300:
                             cl.append((im3.width * im3.height, im3, f))
             cl.sort(key=lambda c: -c[0])
             for k3, (_, im3, f) in enumerate(cl[:5]):
