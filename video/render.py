@@ -262,13 +262,18 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     def seg_end(t):
         nxt = [st for st, sj in segs if st > t + 0.05]
         return nxt[0] if nxt else dur
+    final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))
+    final_from = dur * 0.66
     while t < dur - 0.05:
         subj = subject_at(t + 0.1)
         pool = pools.get(subj) or []
+        in_final = bool(final_pool) and t >= final_from
+        if in_final:
+            pool = final_pool
         if not pool:
             pool = est if est else []
         n = max(1, len(pool))
-        remaining = max(1.0, seg_end(t) - t)
+        remaining = max(1.0, (dur - t) if in_final else (seg_end(t) - t))
         L = min(max(remaining / n, 2.8), 5.2)
         if dur - t - L < 1.6:
             L = dur - t
@@ -279,9 +284,10 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
             path = clips[clip_i % len(clips)]
             clip_i += 1
         elif pool:
-            path = pool[used.get(subj, 0) % len(pool)]
-            used[subj] = used.get(subj, 0) + 1
-            label = jug[subj] if subj < len(jug) else None
+            ukey = "final" if in_final else subj
+            path = pool[used.get(ukey, 0) % len(pool)]
+            used[ukey] = used.get(ukey, 0) + 1
+            label = None if in_final else (jug[subj] if subj < len(jug) else None)
         sc = {"img": path if kind == "foto" else None, "clip": path if kind == "clip" else None,
               "label": label, "s": t, "e": t + L, "first": False, "idx": len(scenes), "subj": subj,
               "kind": kind, "rng": rng.random()}
@@ -557,11 +563,11 @@ def render_caption(ctx, words, groups, t):
                     stroke_width=stroke, stroke_fill=(0, 0, 0, 120))
             if active:
                 pop = 1.0 + 0.06 * math.sin(clamp((t - words[i]["s"]) / 0.14) * math.pi)
-                d.text(pos, tx, font=font, fill=(0, 0, 0, 255), stroke_width=int(stroke * pop),
-                       stroke_fill=YELLOW + (255,))
+                d.text(pos, tx, font=font, fill=YELLOW + (255,), stroke_width=int(stroke * pop),
+                       stroke_fill=(0, 0, 0, 255))
             else:
-                d.text(pos, tx, font=font, fill=(0, 0, 0, 255), stroke_width=stroke,
-                       stroke_fill=(255, 255, 255, 255))
+                d.text(pos, tx, font=font, fill=(255, 255, 255, 255), stroke_width=stroke,
+                       stroke_fill=(0, 0, 0, 255))
             x += wpx + gap
     shadow = shadow.filter(ImageFilter.GaussianBlur(ctx.s(7)))
     shadow.alpha_composite(layer)
@@ -577,12 +583,13 @@ def render_header(ctx, label, t):
     d = ImageDraw.Draw(layer)
     r = ctx.s(30)
     cx, cy = ctx.s(78), ctx.s(112)
-    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=YELLOW + (255,))
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE + (255,), outline=(0, 0, 0, 255), width=ctx.s(4))
     f = ctx.font(30)
     w_, h_, b_ = text_size(d, "SP", f)
-    d.text((cx - w_ / 2 - b_[0], cy - h_ / 2 - b_[1]), "SP", font=f, fill=GREEN + (255,))
+    d.text((cx - w_ / 2 - b_[0], cy - h_ / 2 - b_[1]), "SP", font=f, fill=(0, 0, 0, 255))
     ft = ctx.font(34)
-    d.text((cx + r + ctx.s(18), cy - ctx.s(22)), "SEGUNDO PALO", font=ft, fill=WHITE + (235,))
+    d.text((cx + r + ctx.s(18), cy - ctx.s(22)), "SEGUNDO PALO", font=ft, fill=WHITE + (255,),
+           stroke_width=ctx.s(4), stroke_fill=(0, 0, 0, 255))
     return layer
 
 
@@ -781,11 +788,8 @@ class Renderer:
         sc = scene_at(self.scenes, t)
         cur = photo_frame(self.ctx, sc, t)
         local = t - sc["s"]
-        if sc["idx"] > 0 and local < 0.28:
-            prev = self.scenes[sc["idx"] - 1]
-            old = photo_frame(self.ctx, prev, min(t, prev["e"] - 1e-3))
-            p = ease_io(local / 0.28)
-            cur = Image.blend(old.convert("RGB"), cur.convert("RGB"), p)
+        if False:  # corte limpio: el fundido dejaba fotos dobles superpuestas
+            pass
         return cur.convert("RGBA"), sc
 
     def frame(self, t):

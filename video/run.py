@@ -159,7 +159,8 @@ def own_photos(name):
     if not d:
         print("  sin carpeta de fotos propias para:", name)
         return []
-    fs = sorted(f for f in os.listdir(d) if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")))
+    fs = sorted(f for f in os.listdir(d) if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
+                and not f.lower().startswith("final"))
     print("  carpeta propia:", os.path.basename(d), len(fs), "fotos")
     return [os.path.join(d, f) for f in fs]
 
@@ -327,6 +328,28 @@ def main():
                 if c:
                     credits.append(c)
             print("  ", name, "->", n, "fotos")
+        # fotos para el tramo final del video: carpeta fotos/final/ o archivos que empiecen por "final"
+        try:
+            from PIL import Image as _I2
+            base_f = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fotos")
+            finals = []
+            if os.path.isdir(base_f):
+                for root, _, files in os.walk(base_f):
+                    for f in sorted(files):
+                        if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")) and (
+                                os.path.basename(root).lower() == "final" or f.lower().startswith("final")):
+                            finals.append(os.path.join(root, f))
+            k = 0
+            for pth in finals:
+                im0 = _I2.open(pth).convert("RGB")
+                if im0.width < 450:
+                    print("  foto final demasiado pequena:", os.path.basename(pth), im0.size)
+                    continue
+                k += 1
+                im0.save(os.path.join(imgs, f"final_{k}.jpg"), quality=95)
+                print("  foto final usada:", os.path.basename(pth), im0.size)
+        except Exception as e:  # noqa
+            print("  fotos finales fallo:", e)
         est = data.get("estadio", "").strip()
         if est:
             c = fetch_image(est, os.path.join(imgs, "estadio_1.jpg"))
