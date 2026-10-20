@@ -256,7 +256,7 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
         if len(pl) > 1:
             need = int(round(spk.get(i, 0.0) / 4.5))
             need = max(need, int(math.ceil(spk.get(i, 0.0) / 6.0)), 1)
-            pools[i] = pl[:min(len(pl), min(need, 4))]
+            pools[i] = pl[:min(len(pl), min(need, 3))]
             print("fotos de", jug[i], ":", len(pools[i]), "de", len(pl), "(habla %.0fs)" % spk.get(i, 0.0))
     est = []  # nunca fotos de estadio genericas
     rng = random.Random(int(dur * 1000))
