@@ -845,7 +845,7 @@ def main():
             "-s", f"{r.ctx.W}x{r.ctx.H}", "-r", str(FPS), "-i", "-", "-i", a.audio]
     if fxp:
         cmd = base + ["-i", fxp, "-filter_complex",
-                      "[1:a]volume=1.0[a1];[2:a]volume=0.7[a2];[a1][a2]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]",
+                      "[1:a]volume=1.0[a1];[2:a]volume=0.5[a2];[a1][a2]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]",
                       "-map", "0:v", "-map", "[a]"]
     else:
         cmd = base
