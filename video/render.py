@@ -297,6 +297,11 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     cnt = {}
     final_done = False
     final_from = dur * 0.66
+    KW = ("alineac", "delantera", "once", "plantilla", "equipo", "imparable")
+    for wd in words:
+        if wd["s"] >= dur * 0.45 and any(norm(wd["w"]).startswith(k_) for k_ in KW):
+            final_from = max(0.0, wd["s"] - 0.1)  # la alineacion sale justo cuando se habla de ella
+            break
     while t < dur - 0.05:
         subj = subject_at(t + 0.1)
         pool = pools.get(subj) or []
