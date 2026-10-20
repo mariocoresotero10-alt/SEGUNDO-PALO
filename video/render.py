@@ -291,7 +291,7 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
         remaining = max(1.0, (dur - t) if in_final else (seg_end(t) - t))
         L = min(max(remaining / n, 2.8), 5.2)
         if in_final:
-            L = min(L, 6.5)
+            L = min(L, 6.5, max(2.5, seg_end(t) - t))
             final_done = True
         if dur - t - L < 1.6:
             L = dur - t
