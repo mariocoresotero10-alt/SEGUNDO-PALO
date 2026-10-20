@@ -366,21 +366,23 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     for hit, pth in sorted(topic):
         s0 = max(0.0, hit - 0.1)
         e0 = min(dur, s0 + 3.2)
-        if e0 - s0 < 2.0 or any(a_ < e0 and b_ > s0 for a_, b_ in fin_rng) or s0 < 0.3:
+        if e0 - s0 < 2.0 or any(a_ < e0 and b_ > s0 for a_, b_ in fin_rng):
             continue
-        for sc in scenes:  # ajustar a los limites de plano cercanos para no dejar huecos
-            if sc["s"] < s0 <= sc["s"] + 0.4:
+        for sc in scenes:  # ajustar a los limites de plano cercanos para no dejar huecos ni trozos de <0.4 s
+            if sc["s"] < s0 <= sc["s"] + 1.2:
                 s0 = sc["s"]
-            if sc["s"] < e0 <= sc["s"] + 0.4 or sc["e"] - 0.4 <= e0 < sc["e"]:
-                e0 = sc["e"] if sc["e"] - 0.4 <= e0 else sc["s"]
+            if sc["s"] < e0 < sc["e"] and sc["e"] - e0 <= 1.0:
+                e0 = sc["e"]
+        if e0 - s0 < 1.5:
+            continue
         new_ = []
         for sc in scenes:
             if sc["e"] <= s0 or sc["s"] >= e0:
                 new_.append(sc)
                 continue
-            if sc["s"] < s0 - 0.4:
+            if sc["s"] < s0 - 0.01:
                 lft = dict(sc); lft["e"] = s0; new_.append(lft)
-            if sc["e"] > e0 + 0.4:
+            if sc["e"] > e0 + 0.01:
                 rgt = dict(sc); rgt["s"] = e0; rgt["label"] = None; new_.append(rgt)
         new_.append({"img": pth, "clip": None, "label": None, "s": s0, "e": e0, "first": False, "idx": 0,
                      "subj": subject_at(s0), "kind": "foto", "rng": rng.random()})
@@ -448,7 +450,7 @@ def load_img(path, ctx):
         bx, by = (bg.width - W) // 2, (bg.height - H) // 2
         bg = bg.crop((bx, by, bx + W, by + H)).filter(ImageFilter.GaussianBlur(ctx.s(38)))
         bg = Image.blend(bg, Image.new("RGB", (W, H), (8, 20, 14)), 0.45)
-        fw = min(W, int(im.width * 1.7))
+        fw = min(W, int(im.width * (3.0 if im.width < 450 else 1.7)))
         fh = int(im.height * fw / im.width)
         fg = im.resize((fw, fh), Image.LANCZOS).filter(ImageFilter.UnsharpMask(radius=2, percent=70, threshold=2))
         bg.paste(fg, ((W - fw) // 2, int(H * 0.40 - fh / 2)))
