@@ -317,13 +317,15 @@ def main():
                 print('  fotos propias:', n)
             if n >= 3:
                 got = []  # con 3+ fotos propias no se mezcla nada de Wikimedia
+            if os.environ.get('USAR_WIKI') != '1':
+                got = []  # sin fotos de Wikimedia salvo que se active (salian fotos sin sentido)
             for url, cr in got[: max(0, 7 - n)]:
                 b = http_get(url, binary=True)
                 if b and len(b) > 20000:
                     n += 1
                     open(os.path.join(imgs, f"{key}_{n}.jpg"), "wb").write(b)
                     credits.append(cr)
-            if n == 0:  # plan B: foto principal de la Wikipedia
+            if n == 0 and os.environ.get('USAR_WIKI') == '1':  # plan B: foto principal de la Wikipedia
                 c = fetch_image(title.strip(), os.path.join(imgs, f"{key}_1.jpg"))
                 if c:
                     credits.append(c)
@@ -341,7 +343,7 @@ def main():
                             finals.append(os.path.join(root, f))
             k = 0
             finals.sort(key=lambda q: -(lambda i_: i_.width * i_.height)(_I2.open(q)))
-            for pth in finals[:3]:
+            for pth in finals[:1]:
                 im0 = _I2.open(pth).convert("RGB")
                 if im0.width < 450:
                     print("  foto final demasiado pequena:", os.path.basename(pth), im0.size)
@@ -351,8 +353,24 @@ def main():
                 print("  foto final usada:", os.path.basename(pth), im0.size)
         except Exception as e:  # noqa
             print("  fotos finales fallo:", e)
+        try:
+            from PIL import Image as _I3
+            cdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fotos", "contexto")
+            cl = []
+            if os.path.isdir(cdir):
+                for f in sorted(os.listdir(cdir)):
+                    if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
+                        im3 = _I3.open(os.path.join(cdir, f)).convert("RGB")
+                        if im3.width >= 450:
+                            cl.append((im3.width * im3.height, im3, f))
+            cl.sort(key=lambda c: -c[0])
+            for k3, (_, im3, f) in enumerate(cl[:5]):
+                im3.save(os.path.join(imgs, f"ctx_{k3+1}.jpg"), quality=95)
+                print("  foto contexto usada:", f, im3.size)
+        except Exception as e:  # noqa
+            print("  fotos contexto fallo:", e)
         est = data.get("estadio", "").strip()
-        if est:
+        if est and os.environ.get('USAR_WIKI') == '1':
             c = fetch_image(est, os.path.join(imgs, "estadio_1.jpg"))
             if c:
                 credits.append(c)

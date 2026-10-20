@@ -258,7 +258,7 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
             need = max(need, int(math.ceil(spk.get(i, 0.0) / 6.0)), 1)
             pools[i] = pl[:min(len(pl), min(need, 5))]
             print("fotos de", jug[i], ":", len(pools[i]), "de", len(pl), "(habla %.0fs)" % spk.get(i, 0.0))
-    est = imgs_of("estadio") or [p for p in [os.path.join(images_dir, "img_estadio.jpg")] if os.path.exists(p)]
+    est = []  # nunca fotos de estadio genericas
     rng = random.Random(int(dur * 1000))
     clips = []
     if clips_dir and os.path.isdir(clips_dir):
@@ -274,19 +274,25 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     def seg_end(t):
         nxt = [st for st, sj in segs if st > t + 0.05]
         return nxt[0] if nxt else dur
-    final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))[:2]
+    final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))[:1]
+    ctx_pool = sorted(glob.glob(os.path.join(images_dir, "ctx_*.jpg")))
+    ctx_i = 0
+    final_done = False
     final_from = dur * 0.66
     while t < dur - 0.05:
         subj = subject_at(t + 0.1)
         pool = pools.get(subj) or []
-        in_final = bool(final_pool) and t >= final_from
+        in_final = bool(final_pool) and not final_done and t >= final_from
         if in_final:
             pool = final_pool
         if not pool:
-            pool = est if est else []
+            pool = ctx_pool or next((v for v in pools.values() if v), [])
         n = max(1, len(pool))
         remaining = max(1.0, (dur - t) if in_final else (seg_end(t) - t))
         L = min(max(remaining / n, 2.8), 5.2)
+        if in_final:
+            L = min(L, 6.5)
+            final_done = True
         if dur - t - L < 1.6:
             L = dur - t
         L = min(L, dur - t)
@@ -295,11 +301,15 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
             kind = "clip"
             path = clips[clip_i % len(clips)]
             clip_i += 1
+        elif ctx_pool and not in_final and k % 3 == 2 and t > 3.0:
+            path = ctx_pool[ctx_i % len(ctx_pool)]
+            ctx_i += 1
+            label = None
         elif pool:
             ukey = "final" if in_final else subj
             path = pool[used.get(ukey, 0) % len(pool)]
             used[ukey] = used.get(ukey, 0) + 1
-            label = None if in_final else (jug[subj] if subj < len(jug) else None)
+            label = None if (in_final or pool is ctx_pool) else (jug[subj] if subj < len(jug) and pools.get(subj) else None)
         sc = {"img": path if kind == "foto" else None, "clip": path if kind == "clip" else None,
               "label": label, "s": t, "e": t + L, "first": False, "idx": len(scenes), "subj": subj,
               "kind": kind, "rng": rng.random()}
