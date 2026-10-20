@@ -661,6 +661,96 @@ def render_endcard(ctx, t, dur):
     return full
 
 
+def find_stats(words):
+    """Cifras del guion (12 goles, 5-0, 2-1...) para destacarlas en pantalla cuando se dicen."""
+    out = []
+    for i, w in enumerate(words):
+        tok = w["w"].strip(",.;:¡!¿?\"")
+        if re.search(r"\d", tok) and len(tok) <= 6:
+            label = tok
+            if i + 1 < len(words):
+                nx = words[i + 1]["w"].strip(",.;:¡!¿?\"")
+                if nx.isalpha() and len(nx) <= 12 and not words[i]["w"].endswith((",", ".", "?", "!")):
+                    label = tok + " " + nx
+            if not out or w["s"] - out[-1][0] > 2.5:
+                out.append((w["s"], label.upper()))
+    return out
+
+
+def render_stat(ctx, stats, t):
+    for t0, label in stats:
+        if t0 - 0.05 <= t < t0 + 1.5:
+            lt = t - (t0 - 0.05)
+            p = ease_back(lt / 0.32)
+            out_a = 1.0 - ease_io(clamp((lt - 1.2) / 0.3))
+            layer = Image.new("RGBA", (ctx.W, ctx.H), (0, 0, 0, 0))
+            d = ImageDraw.Draw(layer)
+            font = ctx.font(96)
+            w_, h_, b_ = text_size(d, label, font)
+            px, py = ctx.s(46), ctx.s(22)
+            cy = ctx.H / 2  # se dibuja centrado y se coloca arriba al pegarlo
+            rect = [ctx.W / 2 - w_ / 2 - px, cy - h_ / 2 - py, ctx.W / 2 + w_ / 2 + px, cy + h_ / 2 + py]
+            d.rounded_rectangle(rect, radius=ctx.s(30), fill=YELLOW + (255,))
+            d.text((ctx.W / 2 - w_ / 2 - b_[0], cy - h_ / 2 - b_[1]), label, font=font, fill=(0, 0, 0, 255))
+            full = Image.new("RGBA", (ctx.W, ctx.H), (0, 0, 0, 0))
+            paste_scaled(full, layer, max(0.01, 0.6 + 0.4 * p), ctx.W / 2, ctx.H * 0.135)
+            full.putalpha(full.split()[3].point(lambda v: int(v * clamp(out_a) * clamp(lt / 0.12))))
+            return full
+    return None
+
+
+def build_fx(path, dur, cuts, hits):
+    """Efectos de sonido originales (sintetizados): colchon suave, 'whoosh' en cada corte y golpe grave en los datos."""
+    sr = 44100
+    n = int(dur * sr) + sr
+    rng = np.random.default_rng(7)
+    t = np.arange(n) / sr
+    bed = np.zeros(n)
+    for f, a in ((55.0, 0.5), (82.4, 0.35), (110.0, 0.3), (164.8, 0.18), (220.0, 0.1)):
+        bed += a * np.sin(2 * np.pi * f * t + rng.random() * 6)
+    bed *= 0.55 + 0.45 * np.sin(2 * np.pi * 0.11 * t)
+    bed *= np.clip(t / 1.5, 0, 1) * np.clip((dur - t) / 1.5, 0, 1)
+    fx = 0.10 * bed / max(1e-6, np.abs(bed).max())
+
+    def add(sig, t0):
+        i0 = int(t0 * sr)
+        if i0 < 0 or i0 >= n:
+            return
+        m = min(len(sig), n - i0)
+        fx[i0:i0 + m] += sig[:m]
+
+    # whoosh en cada corte
+    L = int(0.30 * sr)
+    tt = np.linspace(0, 1, L)
+    env = np.sin(np.pi * tt) ** 2
+    for c in cuts:
+        nz = rng.standard_normal(L)
+        y = np.zeros(L)
+        a_prev = 0.0
+        for i in range(L):
+            cut = 0.02 + 0.30 * tt[i]
+            a_prev += cut * (nz[i] - a_prev)
+            y[i] = a_prev
+        y *= env
+        y /= max(1e-6, np.abs(y).max())
+        add(0.16 * y, max(0.0, c - 0.12))
+    # golpe grave
+    L2 = int(0.55 * sr)
+    t2 = np.arange(L2) / sr
+    boom = np.sin(2 * np.pi * (70 - 35 * t2) * t2) * np.exp(-t2 * 6.5)
+    boom[:200] *= np.linspace(0, 1, 200)
+    for h in hits:
+        add(0.50 * boom, h)
+    fx = np.clip(fx, -0.95, 0.95)
+    import wave
+    with wave.open(path, "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes((fx * 32767).astype(np.int16).tobytes())
+    return path
+
+
 class Renderer:
     def __init__(self, data, audio, images_dir, scale=1.0, clips_dir=None):
         self.ctx = Ctx(scale)
@@ -681,6 +771,8 @@ class Renderer:
                 print("alineacion fallida, uso estimacion:", e)
         self.groups = build_caption_groups(self.words)
         self.scenes = build_scenes(data, self.words, self.dur, images_dir, clips_dir)
+        self.stats = find_stats(self.words)
+        print("cifras destacadas:", self.stats)
         self.overlay = make_overlay(self.ctx)
         self.label = data.get("etiqueta", "DEBATE DEL DÍA")
         self.header = render_header(self.ctx, self.label, 0)
@@ -706,6 +798,9 @@ class Renderer:
         nt = render_nametag(ctx, sc["label"], nt_t) if (sc["label"] and sc["first"] and nt_t >= 0) else None
         if nt is not None:
             im.alpha_composite(nt)
+        st = render_stat(ctx, self.stats, t)
+        if st is not None:
+            im.alpha_composite(st)
         hk = render_hook(ctx, self.data.get("gancho", ""), t)
         if hk is not None:
             im.alpha_composite(hk)
@@ -739,10 +834,23 @@ def main():
         print("ok stills; dur", r.dur)
         return
     total = int((a.seconds or r.dur) * FPS)
-    cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-           "-s", f"{r.ctx.W}x{r.ctx.H}", "-r", str(FPS), "-i", "-", "-i", a.audio,
-           "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", a.out]
+    fxp = None
+    try:
+        cuts = [sc["s"] for sc in r.scenes if sc["s"] > 0.5]
+        hits = [0.1] + [x[0] - 0.05 for x in r.stats]
+        fxp = build_fx(os.path.join(os.path.dirname(os.path.abspath(a.out)) or ".", "fx.wav"), r.dur, cuts, hits)
+    except Exception as e:
+        print("sin efectos de sonido:", e)
+    base = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{r.ctx.W}x{r.ctx.H}", "-r", str(FPS), "-i", "-", "-i", a.audio]
+    if fxp:
+        cmd = base + ["-i", fxp, "-filter_complex",
+                      "[1:a]volume=1.0[a1];[2:a]volume=0.7[a2];[a1][a2]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]",
+                      "-map", "0:v", "-map", "[a]"]
+    else:
+        cmd = base
+    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "160k", "-shortest", "-movflags", "+faststart", a.out]
     p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     for n in range(total):
         p.stdin.write(r.frame(n / FPS).tobytes())
