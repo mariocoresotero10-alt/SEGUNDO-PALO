@@ -1,1 +1,6 @@
-Fotos de contexto: portadas/titulares de los 115 cargos del City, escudo, Etihad, etc. Salen intercaladas en cualquier video (max 5, las de mas resolucion). Ojo: si no tocan el tema del video, quita las que no pinten.
+Fotos de contexto del video. Ponles de NOMBRE la palabra clave que se dira en el guion:
+  multa.jpg        -> sale justo cuando se dice "multa"
+  descenso.jpg     -> sale cuando se dice "descenso"
+  apelacion.jpg, cargos.jpg, puntos.jpg, sancion.jpg ...
+Las que NO tengan palabra clave (images (22).jpg, etc.) salen solo al principio como portada.
+Minimo 450 px de ancho.

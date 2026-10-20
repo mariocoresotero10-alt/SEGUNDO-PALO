@@ -275,7 +275,23 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
         nxt = [st for st, sj in segs if st > t + 0.05]
         return nxt[0] if nxt else dur
     final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))[:1]
-    ctx_pool = sorted(glob.glob(os.path.join(images_dir, "ctx_*.jpg")))
+    ctx_all = sorted(glob.glob(os.path.join(images_dir, "ctx_*.jpg")))
+    # fotos de contexto con palabras clave en el nombre (ej. multa.jpg, descenso.jpg): salen cuando se dice esa palabra
+    GEN = {"images", "image", "descarga", "foto", "img", "captura", "screenshot", "jpeg", "unnamed"}
+    topic = []
+    for pth in ctx_all:
+        stem = os.path.basename(pth)[:-4].split("__", 1)[-1]
+        toks = [t_ for t_ in re.split(r"[-_ ]+", stem) if len(t_) > 3 and not t_.isdigit() and t_ not in GEN]
+        hit = None
+        for wd in words:
+            nw = norm(wd["w"])
+            if any(norm(t_)[:5] and nw.startswith(norm(t_)[:max(5, len(norm(t_)) - 2)]) for t_ in toks):
+                hit = wd["s"]
+                break
+        if hit is not None:
+            topic.append((hit, pth))
+    topic_paths = {p_ for _, p_ in topic}
+    ctx_pool = [p_ for p_ in ctx_all if p_ not in topic_paths]
     ctx_i = 0
     shown = set()
     cnt = {}
@@ -345,6 +361,32 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     for i, sc in enumerate(merged):
         sc["idx"] = i
     scenes = merged
+    # fotos de tema: se cortan justo cuando se dice su palabra clave
+    fin_rng = [(sc["s"], sc["e"]) for sc in scenes if sc["img"] and "final_" in os.path.basename(sc["img"])]
+    for hit, pth in sorted(topic):
+        s0 = max(0.0, hit - 0.1)
+        e0 = min(dur, s0 + 3.2)
+        if e0 - s0 < 2.0 or any(a_ < e0 and b_ > s0 for a_, b_ in fin_rng) or s0 < 0.3:
+            continue
+        for sc in scenes:  # ajustar a los limites de plano cercanos para no dejar huecos
+            if sc["s"] < s0 <= sc["s"] + 0.4:
+                s0 = sc["s"]
+            if sc["s"] < e0 <= sc["s"] + 0.4 or sc["e"] - 0.4 <= e0 < sc["e"]:
+                e0 = sc["e"] if sc["e"] - 0.4 <= e0 else sc["s"]
+        new_ = []
+        for sc in scenes:
+            if sc["e"] <= s0 or sc["s"] >= e0:
+                new_.append(sc)
+                continue
+            if sc["s"] < s0 - 0.4:
+                lft = dict(sc); lft["e"] = s0; new_.append(lft)
+            if sc["e"] > e0 + 0.4:
+                rgt = dict(sc); rgt["s"] = e0; rgt["label"] = None; new_.append(rgt)
+        new_.append({"img": pth, "clip": None, "label": None, "s": s0, "e": e0, "first": False, "idx": 0,
+                     "subj": subject_at(s0), "kind": "foto", "rng": rng.random()})
+        scenes = sorted(new_, key=lambda z: z["s"])
+    for i, sc in enumerate(scenes):
+        sc["idx"] = i
     # etiqueta solo en el primer plano de cada jugador
     seen = set()
     for sc in scenes:

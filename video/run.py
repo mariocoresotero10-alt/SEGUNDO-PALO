@@ -365,7 +365,8 @@ def main():
                             cl.append((im3.width * im3.height, im3, f))
             cl.sort(key=lambda c: -c[0])
             for k3, (_, im3, f) in enumerate(cl[:5]):
-                im3.save(os.path.join(imgs, f"ctx_{k3+1}.jpg"), quality=95)
+                slug = re.sub(r"[^a-z0-9]+", "-", os.path.splitext(f)[0].lower()).strip("-")
+                im3.save(os.path.join(imgs, f"ctx_{k3+1}__{slug}.jpg"), quality=95)
                 print("  foto contexto usada:", f, im3.size)
         except Exception as e:  # noqa
             print("  fotos contexto fallo:", e)
