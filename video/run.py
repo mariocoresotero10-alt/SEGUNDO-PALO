@@ -340,7 +340,8 @@ def main():
                                 os.path.basename(root).lower() == "final" or f.lower().startswith("final")):
                             finals.append(os.path.join(root, f))
             k = 0
-            for pth in finals:
+            finals.sort(key=lambda q: -(lambda i_: i_.width * i_.height)(_I2.open(q)))
+            for pth in finals[:3]:
                 im0 = _I2.open(pth).convert("RGB")
                 if im0.width < 450:
                     print("  foto final demasiado pequena:", os.path.basename(pth), im0.size)

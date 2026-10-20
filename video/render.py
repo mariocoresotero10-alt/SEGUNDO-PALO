@@ -246,6 +246,18 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
 
     pools = {i: imgs_of(f"p{i+1}") or [p for p in [os.path.join(images_dir, f"img_{i+1}.jpg")] if os.path.exists(p)]
              for i in range(len(jug))}
+    # cuantas fotos usar de cada jugador segun cuanto se habla de el (las mejores van primero)
+    spk = {i: 0.0 for i in range(len(jug))}
+    for k_, (st_, sj_) in enumerate(segs):
+        en_ = segs[k_ + 1][0] if k_ + 1 < len(segs) else dur
+        spk[sj_] = spk.get(sj_, 0.0) + max(0.0, en_ - st_)
+    for i in list(pools):
+        pl = pools[i]
+        if len(pl) > 1:
+            need = int(round(spk.get(i, 0.0) / 4.5))
+            need = max(need, int(math.ceil(spk.get(i, 0.0) / 6.0)), 1)
+            pools[i] = pl[:min(len(pl), min(need, 5))]
+            print("fotos de", jug[i], ":", len(pools[i]), "de", len(pl), "(habla %.0fs)" % spk.get(i, 0.0))
     est = imgs_of("estadio") or [p for p in [os.path.join(images_dir, "img_estadio.jpg")] if os.path.exists(p)]
     rng = random.Random(int(dur * 1000))
     clips = []
@@ -262,7 +274,7 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     def seg_end(t):
         nxt = [st for st, sj in segs if st > t + 0.05]
         return nxt[0] if nxt else dur
-    final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))
+    final_pool = sorted(glob.glob(os.path.join(images_dir, "final_*.jpg")))[:2]
     final_from = dur * 0.66
     while t < dur - 0.05:
         subj = subject_at(t + 0.1)
