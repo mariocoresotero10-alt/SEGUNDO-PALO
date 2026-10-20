@@ -298,10 +298,10 @@ def build_scenes(data, words, dur, images_dir, clips_dir=None):
     final_done = False
     final_from = dur * 0.66
     final_kw = False
-    KW = ("alineac", "delantera", "once", "plantilla", "equipo", "imparable")
-    for wd in words:
-        if wd["s"] >= dur * 0.45 and any(norm(wd["w"]).startswith(k_) for k_ in KW):
-            final_from = max(0.0, wd["s"] - 0.1)  # la alineacion sale justo cuando se habla de ella
+    for kw_ in ("alineac", "imparable"):  # solo palabras que de verdad hablan del equipo del Barca
+        hit_ = next((wd["s"] for wd in words if wd["s"] >= dur * 0.3 and norm(wd["w"]).startswith(kw_)), None)
+        if hit_ is not None:
+            final_from = max(0.0, hit_ - 0.1)
             final_kw = True
             break
     while t < dur - 0.05:
